@@ -1,7 +1,8 @@
 import torch.nn as nn
 
+from .utils.layer_norm import LayerNorm
 from .attention import MultiHeadedAttention
-from .utils import SublayerConnection, PositionwiseFeedForward
+from .utils import PositionwiseFeedForward
 
 
 class TransformerBlock(nn.Module):
@@ -19,13 +20,32 @@ class TransformerBlock(nn.Module):
         """
 
         super().__init__()
-        self.attention = MultiHeadedAttention(h=attn_heads, d_model=hidden, dropout=dropout)
+        
+        # sublayer 1 (Multi-Head Attention sublayer):
+        self.layernorm1 = LayerNorm(hidden)
+        self.multiheadedattention = MultiHeadedAttention(h=attn_heads, d_model=hidden, dropout=dropout)
+        self.dropout1 = nn.Dropout(dropout)
+        
+        # sublayer 2 (Position-wise Feed Forward sublayer):
+        self.layernorm2 = LayerNorm(hidden)
         self.feed_forward = PositionwiseFeedForward(d_model=hidden, d_ff=feed_forward_hidden, dropout=dropout)
-        self.input_sublayer = SublayerConnection(size=hidden, dropout=dropout)
-        self.output_sublayer = SublayerConnection(size=hidden, dropout=dropout)
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout2 = nn.Dropout(dropout)
+        
+        self.dropout3 = nn.Dropout(dropout)
 
     def forward(self, x, mask):
-        x = self.input_sublayer(x, lambda _x: self.attention.forward(_x, _x, _x, mask=mask))
-        x = self.output_sublayer(x, self.feed_forward)
-        return self.dropout(x)
+        # sublayer 1 (Multi-Head Attention sublayer):
+        x_skip_connection1 = x
+        x = self.layernorm1(x)
+        x = self.multiheadedattention(x, x, x, mask)
+        x = self.dropout1(x)
+        x += x_skip_connection1
+        
+        # sublayer 2 (Position-wise Feed Forward sublayer):
+        x_skip_connection2 = x
+        x = self.layernorm2(x)
+        x = self.feed_forward(x)
+        x = self.dropout2(x)
+        x += x_skip_connection2
+        
+        return self.dropout3(x)
